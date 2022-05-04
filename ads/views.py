@@ -1,7 +1,9 @@
+from django.conf import settings
+from django.core.paginator import Paginator
 from django.http import JsonResponse, Http404
 from django.views import View
-from django.views.generic import DetailView
-from .models import Categories, Ads
+from django.views.generic import ListView, DetailView, DeleteView, UpdateView, CreateView
+from .models import Categories, Ads, UserClass, Location
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 import json
@@ -10,70 +12,67 @@ import json
 def main_view(request):
     return JsonResponse({'status': 'OK'}, safe=False)
         
-        
-@method_decorator(csrf_exempt, name='dispatch')        
-class AdsView(View):
+          
+class AdsView(ListView):
+    model = Ads
+    
     def get(self, request, *args, **kwargs):
-        ads = Ads.objects.all()
+        super().get(request, *args, **kwargs)
+        
+        ads = self.object_list.order_by("-price")
+        
+        paginator = Paginator(ads, settings.TOTAL_ON_PAGE)
+        page_number = int(request.GET.get('page', 1)) if int(request.GET.get('page', 1)) in paginator.page_range else 1
+        
         data_to_return = []
-        for ad in ads:
+        for ad in paginator.page(page_number).object_list:
             data_to_return.append({'id': ad.id,
                                    'name': ad.name,
-                                   'author': ad.author,
+                                   'author': ad.author_id,
                                    'price': ad.price,
                                    'description': ad.description,
-                                   'address': ad.address,
-                                   'is_published': ad.is_published})
+                                   'is_published': ad.is_published,
+                                   'category': ad.category_id,
+                                   'image': ad.image.url if ad.image else 'No image'})
+                                   
+        dict_return = {"num_pages": paginator.num_pages,
+                       "total": paginator.count,
+                       "current_page": page_number,
+                       "items": data_to_return}
             
-        return JsonResponse(data_to_return, safe=False, json_dumps_params={'ensure_ascii': False})
-    
-    def post(self, request, *args, **kwargs):
-        data = json.loads(request.body)
-        all_keys = {'name', 'author', 'price', 'description', 'address', 'is_published'}
-        
-        if all_keys.issubset(data.keys()):
-            ad = Ads()
-            
-            ad.name = data.get('name')
-            ad.author = data.get('author')
-            ad.price = data.get('price')
-            ad.description = data.get('description')
-            ad.address = data.get('address')
-            ad.is_published = data.get('is_published')
-            ad.save()
-        
-            return JsonResponse({
-                "id": ad.id,
-                "name": ad.name,
-                "price": ad.price,
-                "description": ad.description,
-                "address": ad.address,
-                "is_published": ad.is_published}, safe=False)
-        return JsonResponse({"error": "wrong data"})
-      
-        
-@method_decorator(csrf_exempt, name='dispatch')
-class CatView(View):
-    def get(self, request, *args, **kwargs):
-        categories = Categories.objects.all()
-        data_to_return = []
-        for category in categories:
-            data_to_return.append({'id': category.id,
-                                   'name': category.name})
-            
-        return JsonResponse(data_to_return, safe=False, json_dumps_params={'ensure_ascii': False})
-    
-    def post(self, request, *args, **kwargs):
-        data = json.loads(request.body)
+        return JsonResponse(dict_return, safe=False, json_dumps_params={'ensure_ascii': False})
 
-        cat = Categories()
-        if data.get('name'):
-            cat.name = data.get('name')
-            cat.save()
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdCreateView(CreateView):
+    model = Ads
+    fields = ['name', 'author', 'price', 'description', 'is_published', 'category']
+    
+    def post(self, request, *args, **kwargs):
+        super().post(request, *args, **kwargs)
         
+        ads_data = json.loads(request.body)
+        all_keys = {'name', 'author', 'price', 'description', 'is_published', 'category'}
+        
+        if all_keys.issubset(ads_data.keys()):
+            ad = Ads.objects.create(
+                name=ads_data['name'],
+                author_id = ads_data['author'],
+                price = ads_data['price'],
+                description = ads_data['description'],
+                is_published = ads_data['is_published'],
+                category_id = ads_data['category']
+                )
+                
+            ad.save()
             return JsonResponse({
-                "id": cat.id,
-                "name": cat.name, }, safe=False)
+                    "id": ad.id,
+                    "name": ad.name,
+                    "author": ad.author_id,
+                    "price": ad.price,
+                    "description": ad.description,
+                    "is_published": ad.is_published,
+                    "category": ad.category_id}, safe=False)
         return JsonResponse({"error": "wrong data"})
 
 
@@ -88,13 +87,127 @@ class AdDetailView(DetailView):
         
         data_to_return = {'id': ad.id,
                           'name': ad.name,
-                          'author': ad.author,
+                          'author': ad.author_id,
                           'price': ad.price,
                           'description': ad.description,
-                          'address': ad.address,
-                          'is_published': ad.is_published}
+                          'category': ad.category_id,
+                          'is_published': ad.is_published,
+                          'image': ad.image.url if ad.image else 'No image'
+                          }
         
         return JsonResponse(data_to_return, safe=False)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdImageView(UpdateView):
+    model = Ads
+    fields = ["logo"]
+
+    def post(self, request, *args, **kwargs):
+        ad = self.get_object()
+
+        ad.image = request.FILES["logo"]
+        ad.save()
+
+        data_to_return = {'id': ad.id,
+                          'name': ad.name,
+                          'author': ad.author_id,
+                          'price': ad.price,
+                          'description': ad.description,
+                          'category': ad.category_id,
+                          'is_published': ad.is_published,
+                          'image': ad.image.url if ad.image else 'No image'
+                          }
+        
+        return JsonResponse(data_to_return, safe=False)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdUpdateView(UpdateView):
+    model = Ads
+    fields = ['name', 'author', 'price', 'description', 'is_published', 'category']
+    
+    def post(self, request, *args, **kwargs):
+        super().post(request, *args, **kwargs)
+        
+        ads_data = json.loads(request.body)
+        
+        self.object.name = ads_data['name']
+        self.object.author_id = ads_data['author']
+        self.object.price = ads_data['price']
+        self.object.description = ads_data['description']
+        self.object.is_published = ads_data['is_published']
+        self.object.category_id = ads_data['category']
+        
+        self.object.save()
+        
+        return JsonResponse({
+                "id": self.object.id,
+                "name": self.object.name,
+                "author": self.object.author_id,
+                "price": self.object.price,
+                "description": self.object.description,
+                "is_published": self.object.is_published,
+                "category": self.object.category_id}, safe=False)   
+    
+
+@method_decorator(csrf_exempt, name='dispatch')
+class AdDeleteView(DeleteView):
+    model = Ads
+    success_url = "ads"
+
+    def delete(self, request, *args, **kwargs):
+        super().delete(request, *args, **kwargs)
+
+        return JsonResponse({"status": "ok"}, status=200)
+      
+        
+@method_decorator(csrf_exempt, name='dispatch')
+class CatView(ListView):
+    model = Categories
+    
+    def get(self, request, *args, **kwargs):
+        super().get(request, *args, **kwargs)
+        
+        cat = self.object_list.order_by("name")
+        
+        paginator = Paginator(cat, settings.TOTAL_ON_PAGE)
+        page_number = int(request.GET.get('page', 1)) if int(request.GET.get('page', 1)) in paginator.page_range else 1
+        
+        data_to_return = []
+        for category_ in paginator.page(page_number).object_list:
+            data_to_return.append({'id': category_.id,
+                                   'name': category_.name})
+                                   
+        dict_return = {"num_pages": paginator.num_pages,
+                       "total": paginator.count,
+                       "current_page": page_number,
+                       "items": data_to_return}
+            
+        return JsonResponse(dict_return, safe=False, json_dumps_params={'ensure_ascii': False})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CatCreateView(CreateView):
+    model = Categories
+    fields = ['name']
+    
+    def post(self, request, *args, **kwargs):
+        super().post(request, *args, **kwargs)
+        
+        cat_data = json.loads(request.body)
+        all_keys = {'name'}
+        
+        if all_keys.issubset(cat_data.keys()):
+            cat = Categories.objects.create(
+                name=cat_data['name']
+                )
+                
+            cat.save()
+            return JsonResponse({
+                    "id": cat.id,
+                    "name": cat.name}, safe=False)
+        return JsonResponse({"error": "wrong data"})
 
 
 class CatDetailView(DetailView):
@@ -111,51 +224,170 @@ class CatDetailView(DetailView):
         return JsonResponse(data_to_return, safe=False)
 
 
-class SaveFromSecondFile(View):
-    """Save data from Categories file to DB"""
-    def get(self, request, *args, **kwargs):
-        with open('ads/datasets/categories.csv', 'r', encoding='UTF-8') as f:
-            file_read = f.readlines()
+@method_decorator(csrf_exempt, name='dispatch')
+class CatUpdateView(UpdateView):
+    model = Categories
+    fields = ['name']
+    
+    def post(self, request, *args, **kwargs):
+        super().post(request, *args, **kwargs)
         
-        for line in file_read[1:]:
-            temp_data = line.split(',')
-            temp_ads = Categories()
-            temp_ads.name = temp_data[1].strip()
-            temp_ads.save()
-            
-        return JsonResponse({"status": "OK"}, safe=False, json_dumps_params={'ensure_ascii': False})
+        cat_data = json.loads(request.body)
+        
+        self.object.name = cat_data['name']
+        
+        self.object.save()
+        
+        return JsonResponse({
+                "id": self.object.id,
+                "name": self.object.name}, safe=False)   
 
 
-class SaveFromFile(View):
-    """Save data from Ads file to DB"""
+@method_decorator(csrf_exempt, name='dispatch')
+class CatDeleteView(DeleteView):
+    model = Categories
+    success_url = "cat"
+
+    def delete(self, request, *args, **kwargs):
+        super().delete(request, *args, **kwargs)
+
+        return JsonResponse({"status": "ok"}, status=200)
+
+
+class UsersView(ListView):
+    model = UserClass
+    
     def get(self, request, *args, **kwargs):
-        with open('ads/datasets/ads.csv', 'r', encoding='UTF-8') as f:
-            file_read = f.readlines()
+        super().get(request, *args, **kwargs)
         
-        for line in file_read[1:]:
-            new_list = []
-            i = True
-            for item in line:
-                if item == '"':
-                    i = not i
-                if item == ',':
-                    if i:
-                        new_list.append(';')
-                    else:
-                        new_list.append(item)
-                else:
-                    new_list.append(item)
-            new_list = ''.join(new_list)
-            new_list = new_list.split(';')
-            temp_ads = Ads()
-             
-            temp_ads.name = new_list[1].strip()
-            temp_ads.author = new_list[2].strip()
-            temp_ads.price = new_list[3].strip()
-            temp_ads.description = new_list[4].strip()
-            temp_ads.address = new_list[5].strip()
-            temp_ads.is_published = True if new_list[6].strip().lower() == 'true' else False
+        users = self.object_list.select_related('location')
+        
+        paginator = Paginator(users, settings.TOTAL_ON_PAGE)
+        page_number = int(request.GET.get('page', 1)) if int(request.GET.get('page', 1)) in paginator.page_range else 1
+        
+        data_to_return = []
+        
+        for user in paginator.page(page_number).object_list:
+            data_to_return.append({'id': user.id,
+                                   'username': user.username,
+                                   'first_name': user.first_name,
+                                   'last_name': user.last_name,
+                                   'role': user.role,
+                                   'age': user.age,
+                                   'location': user.location.name,
+                                   'all ads for user': user.ads_set.filter(is_published__exact=True).count()})
+                                   
+        dict_return = {"num_pages": paginator.num_pages,
+                       "total": paginator.count,
+                       "current_page": page_number,
+                       "items": data_to_return}
             
-            temp_ads.save()
-                         
-        return JsonResponse({"status": "OK"}, safe=False, json_dumps_params={'ensure_ascii': False})
+        return JsonResponse(dict_return, safe=False, json_dumps_params={'ensure_ascii': False})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UsersCreateView(CreateView):
+    model = UserClass
+    fields = ['username', 'first_name', 'last_name', 'password', 'role', 'age', 'location']
+    
+    def post(self, request, *args, **kwargs):
+        super().post(request, *args, **kwargs)
+        
+        user_data = json.loads(request.body)
+        all_keys = {'username', 'first_name', 'last_name', 'password', 'role', 'age', 'location'}
+        
+        if all_keys.issubset(user_data.keys()):
+            user = UserClass.objects.create(
+                username=user_data['username'],
+                first_name=user_data['first_name'],
+                last_name=user_data['last_name'],
+                password=user_data['password'],
+                role=user_data['role'],
+                age=user_data['age']                
+                )
+            
+            location_, _ = Location.objects.get_or_create(name=user_data['location'], defaults={'lat': '0', 'lng': '0'})
+            user.location = location_
+                
+            user.save()
+            return JsonResponse({
+                    "id": user.id,
+                    "username": user.username,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "role": user.role,
+                    "age": user.age,
+                    "location": user.location.name
+                    
+                    }, safe=False)
+        return JsonResponse({"error": "wrong data"})
+
+
+class UsersDetailView(DetailView):
+    model = UserClass
+    
+    def get(self, request, *args, **kwargs):
+        try:
+            user = self.get_object()
+        except Http404:
+            return JsonResponse({"error": "DoesNotExist"}, safe=False, status=404)
+        
+        data_to_return = {'id': user.id, 
+                          'username': user.username,
+                          'first_name': user.first_name,
+                          'last_name': user.last_name,
+                          'role': user.role,
+                          'age': user.age,
+                          'location': user.location.name,
+                          'all ads for user': user.ads_set.filter(is_published__exact=True).count()}
+        
+        return JsonResponse(data_to_return, safe=False)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UsersUpdateView(UpdateView):
+    model = UserClass
+    fields = ['username', 'first_name', 'last_name', 'password', 'role', 'age', 'location']
+    
+    def post(self, request, *args, **kwargs):
+        super().post(request, *args, **kwargs)
+        
+        user_data = json.loads(request.body)
+        all_keys = {'username', 'first_name', 'last_name', 'password', 'role', 'age', 'location'}
+        
+        if all_keys.issubset(user_data.keys()):
+            self.object.username=user_data['username']
+            self.object.first_name=user_data['first_name']
+            self.object.last_name=user_data['last_name']
+            self.object.password=user_data['password']
+            self.object.role=user_data['role']
+            self.object.age=user_data['age']                
+                
+            
+            location_, _ = Location.objects.get_or_create(name=user_data['location'], defaults={'lat': '0', 'lng': '0'})
+            self.object.location = location_
+
+            self.object.save()
+        
+            return JsonResponse({
+                    "id": self.object.id,
+                    "username": self.object.username,
+                    "first_name": self.object.first_name,
+                    "last_name": self.object.last_name,
+                    "role": self.object.role,
+                    "age": self.object.age,
+                    "location": self.object.location.name
+                    
+                    }, safe=False)
+        return JsonResponse({"error": "wrong data"})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UsersDeleteView(DeleteView):
+    model = UserClass
+    success_url = "users"
+
+    def delete(self, request, *args, **kwargs):
+        super().delete(request, *args, **kwargs)
+
+        return JsonResponse({"status": "ok"}, status=200)
