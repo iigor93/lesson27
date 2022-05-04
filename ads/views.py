@@ -101,7 +101,7 @@ class AdDetailView(DetailView):
 @method_decorator(csrf_exempt, name='dispatch')
 class AdImageView(UpdateView):
     model = Ads
-    fields = ["logo"]
+    fields = ["image"]
 
     def post(self, request, *args, **kwargs):
         ad = self.get_object()
