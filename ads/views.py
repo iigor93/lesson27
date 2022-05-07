@@ -6,41 +6,41 @@ from django.views.generic import ListView, DetailView, DeleteView, UpdateView, C
 from .models import Categories, Ads, UserClass, Location
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Q
 import json
+
+from rest_framework import generics
+from .serializers import UserSerializer, UserCreateSerializer, UserUpdateSerializer, LocationSerializer, AdsSerializer
+from rest_framework import viewsets
 
 
 def main_view(request):
     return JsonResponse({'status': 'OK'}, safe=False)
         
-          
-class AdsView(ListView):
-    model = Ads
+class AdsView(generics.ListAPIView):
+    queryset = Ads.objects.all()
+    serializer_class = AdsSerializer
     
     def get(self, request, *args, **kwargs):
-        super().get(request, *args, **kwargs)
         
-        ads = self.object_list.order_by("-price")
+        category_search = request.GET.getlist("cat", None)
+        if category_search:
+            self.queryset = self.queryset.filter(category__in=category_search)
         
-        paginator = Paginator(ads, settings.TOTAL_ON_PAGE)
-        page_number = int(request.GET.get('page', 1)) if int(request.GET.get('page', 1)) in paginator.page_range else 1
+        text_search = request.GET.get("text", None)
+        if text_search:
+            self.queryset = self.queryset.filter(Q(name__icontains=text_search) | Q(description__icontains=text_search))
         
-        data_to_return = []
-        for ad in paginator.page(page_number).object_list:
-            data_to_return.append({'id': ad.id,
-                                   'name': ad.name,
-                                   'author': ad.author_id,
-                                   'price': ad.price,
-                                   'description': ad.description,
-                                   'is_published': ad.is_published,
-                                   'category': ad.category_id,
-                                   'image': ad.image.url if ad.image else 'No image'})
-                                   
-        dict_return = {"num_pages": paginator.num_pages,
-                       "total": paginator.count,
-                       "current_page": page_number,
-                       "items": data_to_return}
+        location_search = request.GET.get("location", None)
+        if location_search:
+            self.queryset = self.queryset.filter(author__location__name__icontains=location_search)
             
-        return JsonResponse(dict_return, safe=False, json_dumps_params={'ensure_ascii': False})
+        price_from = request.GET.get("price_from", None)
+        price_to = request.GET.get("price_to", None)
+        if price_from and price_to:
+            self.queryset = self.queryset.filter(price__range=(price_from, price_to))
+
+        return super().get(request, *args, **kwargs)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -254,140 +254,31 @@ class CatDeleteView(DeleteView):
         return JsonResponse({"status": "ok"}, status=200)
 
 
-class UsersView(ListView):
-    model = UserClass
-    
-    def get(self, request, *args, **kwargs):
-        super().get(request, *args, **kwargs)
-        
-        users = self.object_list.select_related('location')
-        
-        paginator = Paginator(users, settings.TOTAL_ON_PAGE)
-        page_number = int(request.GET.get('page', 1)) if int(request.GET.get('page', 1)) in paginator.page_range else 1
-        
-        data_to_return = []
-        
-        for user in paginator.page(page_number).object_list:
-            data_to_return.append({'id': user.id,
-                                   'username': user.username,
-                                   'first_name': user.first_name,
-                                   'last_name': user.last_name,
-                                   'role': user.role,
-                                   'age': user.age,
-                                   'location': user.location.name,
-                                   'all ads for user': user.ads_set.filter(is_published__exact=True).count()})
-                                   
-        dict_return = {"num_pages": paginator.num_pages,
-                       "total": paginator.count,
-                       "current_page": page_number,
-                       "items": data_to_return}
-            
-        return JsonResponse(dict_return, safe=False, json_dumps_params={'ensure_ascii': False})
+class UsersView(generics.ListAPIView):
+    queryset = UserClass.objects.all()
+    serializer_class = UserSerializer
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class UsersCreateView(CreateView):
-    model = UserClass
-    fields = ['username', 'first_name', 'last_name', 'password', 'role', 'age', 'location']
-    
-    def post(self, request, *args, **kwargs):
-        super().post(request, *args, **kwargs)
-        
-        user_data = json.loads(request.body)
-        all_keys = {'username', 'first_name', 'last_name', 'password', 'role', 'age', 'location'}
-        
-        if all_keys.issubset(user_data.keys()):
-            user = UserClass.objects.create(
-                username=user_data['username'],
-                first_name=user_data['first_name'],
-                last_name=user_data['last_name'],
-                password=user_data['password'],
-                role=user_data['role'],
-                age=user_data['age']                
-                )
-            
-            location_, _ = Location.objects.get_or_create(name=user_data['location'], defaults={'lat': '0', 'lng': '0'})
-            user.location = location_
-                
-            user.save()
-            return JsonResponse({
-                    "id": user.id,
-                    "username": user.username,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "role": user.role,
-                    "age": user.age,
-                    "location": user.location.name
-                    
-                    }, safe=False)
-        return JsonResponse({"error": "wrong data"})
+class UsersCreateView(generics.CreateAPIView):
+    queryset = UserClass.objects.all()
+    serializer_class = UserCreateSerializer
 
 
-class UsersDetailView(DetailView):
-    model = UserClass
-    
-    def get(self, request, *args, **kwargs):
-        try:
-            user = self.get_object()
-        except Http404:
-            return JsonResponse({"error": "DoesNotExist"}, safe=False, status=404)
-        
-        data_to_return = {'id': user.id, 
-                          'username': user.username,
-                          'first_name': user.first_name,
-                          'last_name': user.last_name,
-                          'role': user.role,
-                          'age': user.age,
-                          'location': user.location.name,
-                          'all ads for user': user.ads_set.filter(is_published__exact=True).count()}
-        
-        return JsonResponse(data_to_return, safe=False)
+class UsersDetailView(generics.RetrieveAPIView):
+    queryset = UserClass.objects.all()
+    serializer_class = UserSerializer
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class UsersUpdateView(UpdateView):
-    model = UserClass
-    fields = ['username', 'first_name', 'last_name', 'password', 'role', 'age', 'location']
-    
-    def post(self, request, *args, **kwargs):
-        super().post(request, *args, **kwargs)
-        
-        user_data = json.loads(request.body)
-        all_keys = {'username', 'first_name', 'last_name', 'password', 'role', 'age', 'location'}
-        
-        if all_keys.issubset(user_data.keys()):
-            self.object.username=user_data['username']
-            self.object.first_name=user_data['first_name']
-            self.object.last_name=user_data['last_name']
-            self.object.password=user_data['password']
-            self.object.role=user_data['role']
-            self.object.age=user_data['age']                
-                
-            
-            location_, _ = Location.objects.get_or_create(name=user_data['location'], defaults={'lat': '0', 'lng': '0'})
-            self.object.location = location_
-
-            self.object.save()
-        
-            return JsonResponse({
-                    "id": self.object.id,
-                    "username": self.object.username,
-                    "first_name": self.object.first_name,
-                    "last_name": self.object.last_name,
-                    "role": self.object.role,
-                    "age": self.object.age,
-                    "location": self.object.location.name
-                    
-                    }, safe=False)
-        return JsonResponse({"error": "wrong data"})
+class UsersUpdateView(generics.UpdateAPIView):
+    queryset = UserClass.objects.all()
+    serializer_class = UserUpdateSerializer
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class UsersDeleteView(DeleteView):
-    model = UserClass
-    success_url = "users"
+class UsersDeleteView(generics.DestroyAPIView):
+    queryset = UserClass.objects.all()
+    serializer_class = UserUpdateSerializer
 
-    def delete(self, request, *args, **kwargs):
-        super().delete(request, *args, **kwargs)
 
-        return JsonResponse({"status": "ok"}, status=200)
+class LocationViewSet(viewsets.ModelViewSet):
+    queryset = Location.objects.all()
+    serializer_class = LocationSerializer
