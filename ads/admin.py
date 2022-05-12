@@ -1,8 +1,6 @@
 from django.contrib import admin
-from .models import Ads, Categories, Location, UserClass
+from .models import Ads
 
 
 admin.site.register(Ads)
-admin.site.register(Categories)
-admin.site.register(Location)
-admin.site.register(UserClass)
+

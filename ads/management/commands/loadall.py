@@ -2,7 +2,11 @@ import os
 
 from django.core.management.base import BaseCommand
 from django.core.management import call_command
-from ads.models import Categories, Ads, Location, UserClass
+
+from ads.models import Ads
+from categories.models import Categories
+from locations.models import Location
+from authentication.models import User
 
 
 class Command(BaseCommand):
@@ -74,7 +78,7 @@ class Command(BaseCommand):
             new_list = ''.join(new_list)
             new_list = new_list.split(';')
             
-            temp_ = UserClass()
+            temp_ = User()
             temp_.first_name = new_list[1].strip()
             temp_.last_name = new_list[2].strip()
             temp_.username = new_list[3].strip()

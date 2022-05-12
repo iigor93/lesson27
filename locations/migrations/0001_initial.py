@@ -12,18 +12,16 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Ads',
+            name='Location',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('name', models.CharField(max_length=200)),
-                ('price', models.IntegerField()),
-                ('description', models.CharField(max_length=2000)),
-                ('is_published', models.BooleanField()),
-                ('image', models.ImageField(null=True, upload_to='media/')),
+                ('lat', models.CharField(max_length=200)),
+                ('lng', models.CharField(max_length=200)),
             ],
             options={
-                'verbose_name': 'Объявление',
-                'verbose_name_plural': 'Объявления',
+                'verbose_name': 'Локация',
+                'verbose_name_plural': 'Локации',
             },
         ),
     ]
