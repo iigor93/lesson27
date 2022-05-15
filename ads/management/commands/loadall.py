@@ -28,6 +28,7 @@ class Command(BaseCommand):
             temp_data = line.split(',')
             temp_ads = Categories()
             temp_ads.name = temp_data[1].strip()
+            temp_ads.slug = temp_data[2].strip()
             temp_ads.save()
             
         print('category - OK')
@@ -86,6 +87,7 @@ class Command(BaseCommand):
             temp_.role = new_list[5].strip()
             temp_.age = new_list[6].strip()
             temp_.location_id = new_list[7].strip()
+            temp_.email_address = new_list[8].strip()
             temp_.save()
             
         print('user - OK')

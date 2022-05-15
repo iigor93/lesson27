@@ -1,16 +1,7 @@
-from django.conf import settings
-from django.core.paginator import Paginator
-from django.http import JsonResponse, Http404
-from django.views import View
-from django.views.generic import ListView, DetailView, DeleteView, UpdateView, CreateView
-from .models import User
-
-
-import json
-
 from rest_framework import generics
-from .serializers import UserSerializer, UserCreateSerializer, UserUpdateSerializer
-from rest_framework import viewsets
+
+from authentication.models import User
+from authentication.serializers import UserSerializer, UserCreateSerializer, UserUpdateSerializer
 
 
 class UsersView(generics.ListAPIView):
